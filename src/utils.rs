@@ -1,6 +1,6 @@
 use sysinfo::System;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct SystemState {
     pub sys: System,
 }
