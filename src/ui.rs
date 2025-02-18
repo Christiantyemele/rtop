@@ -42,35 +42,52 @@ impl AppState {
         let (total_memory, used_memory) = get_ram_info();
         let memory_percentage = (used_memory as f64 / total_memory as f64 * 100.0).round() as u64;
 
-        
         let memory_info = format!(
             "RAM Usage: {} / {} ({}%)",
             used_memory, total_memory, memory_percentage
         );
 
-        // Create display text with stylized lines
-        let display = Text::from(vec![
+        // Memory display
+        let memory_display = Text::from(vec![
             Line::from("Real-Time RAM Monitor".bold().fg(Color::Cyan)),
             Line::from(memory_info),
             Line::from("Press 'q' to quit.".fg(Color::Red)),
         ]);
 
-        
+        // Key press display
+        let key_press_display = Text::from(vec![Line::from(vec![
+            "Pressed: ".into(),
+            self.value.to_string().yellow(),
+        ])]);
+
+        // Define layout
         let layout = Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
-            .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(area);
 
-        
-        let block = Block::bordered()
+        // Create a block for the memory display
+        let memory_block = Block::bordered()
             .border_set(border::PLAIN)
             .border_style(Style::new().green())
             .title("Memory Info".fg(Color::Yellow));
 
-        
-        Paragraph::new(display)
-            .block(block)
+        // Create a block for the key press display
+        let key_press_block = Block::bordered()
+            .border_set(border::PLAIN)
+            .border_style(Style::new().green())
+            .title("Key Press".to_string());
+
+        // Render memory info in the UI
+        Paragraph::new(memory_display)
+            .block(memory_block)
             .render(layout[1], &mut buf);
+
+        // Render key press info in the UI
+        Paragraph::new(key_press_display)
+            .centered()
+            .block(key_press_block)
+            .render(layout[0], &mut buf);
     }
 
     fn handle_events(&mut self) -> Result<(), UiErrors> {
@@ -101,27 +118,10 @@ impl AppState {
 }
 
 impl Widget for &AppState {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
+    fn render(self, _area: ratatui::prelude::Rect, _buf: &mut ratatui::prelude::Buffer)
     where
         Self: Sized,
     {
-        let title = Line::from("Rtop".bold().black());
-        let block = Block::bordered()
-            .border_set(border::PLAIN)
-            .border_style(Style::new().green())
-            .title(title.centered());
-
-        // Application layout
-        let layout = Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
-            .split(area);
-
-        Paragraph::new("Press 'q' to quit.")
-            .centered()
-            .block(block)
-            .render(layout[0], buf);
-
-        
+        // This implementation is not needed since rendering is handled in draw()
     }
 }
