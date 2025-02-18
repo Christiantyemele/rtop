@@ -1,18 +1,19 @@
+use crate::system::get_ram_info;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
     layout::{Constraint, Layout},
-    style::{Style, Stylize},
+    style::{Color, Style, Stylize},
     symbols::border,
     text::{Line, Text},
     widgets::{Block, Paragraph, Widget},
     DefaultTerminal, Frame,
 };
+use std::{thread, time::Duration};
 use thiserror::Error;
 
 #[derive(Default)]
 pub struct AppState {
     exit: bool,
-    // dummy
     value: char,
 }
 
@@ -23,29 +24,61 @@ pub enum UiErrors {
 }
 
 impl AppState {
-    // runs the application untill the user quits
+    // Runs the application until the user quits
     pub fn run(&mut self, mut terminal: DefaultTerminal) -> Result<(), UiErrors> {
         while !self.exit {
             terminal
                 .draw(|frame| self.draw(frame))
                 .map_err(|_| UiErrors::GenericError("error drawing to frame".to_owned()))?;
             self.handle_events()?;
+            thread::sleep(Duration::from_secs(1));
         }
         Ok(())
     }
 
     fn draw(&self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area());
+        let area = frame.area();
+        let mut buf = frame.buffer_mut();
+        let (total_memory, used_memory) = get_ram_info();
+        let memory_percentage = (used_memory as f64 / total_memory as f64 * 100.0).round() as u64;
+
+        
+        let memory_info = format!(
+            "RAM Usage: {} / {} ({}%)",
+            used_memory, total_memory, memory_percentage
+        );
+
+        // Create display text with stylized lines
+        let display = Text::from(vec![
+            Line::from("Real-Time RAM Monitor".bold().fg(Color::Cyan)),
+            Line::from(memory_info),
+            Line::from("Press 'q' to quit.".fg(Color::Red)),
+        ]);
+
+        
+        let layout = Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([Constraint::Percentage(20), Constraint::Percentage(80)])
+            .split(area);
+
+        
+        let block = Block::bordered()
+            .border_set(border::PLAIN)
+            .border_style(Style::new().green())
+            .title("Memory Info".fg(Color::Yellow));
+
+        
+        Paragraph::new(display)
+            .block(block)
+            .render(layout[1], &mut buf);
     }
 
     fn handle_events(&mut self) -> Result<(), UiErrors> {
-        // use blocking event for now
         match event::read() {
             Ok(Event::Key(key_event)) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_events(key_event);
                 Ok(())
             }
-            // ignore mouse events for now
             _ => Ok(()),
         }
     }
@@ -63,7 +96,7 @@ impl AppState {
     }
 
     fn handle_char(&mut self, value: char) {
-        self.value = value
+        self.value = value;
     }
 }
 
@@ -78,29 +111,17 @@ impl Widget for &AppState {
             .border_style(Style::new().green())
             .title(title.centered());
 
-        let cpu_block = Block::bordered()
-            .border_set(border::PLAIN)
-            .border_style(Style::new().green());
-
-        // application layout
+        // Application layout
         let layout = Layout::default()
             .direction(ratatui::layout::Direction::Vertical)
             .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
             .split(area);
 
-        let display = Text::from(vec![Line::from(vec![
-            "pressed ".into(),
-            self.value.to_string().yellow(),
-        ])]);
-
-        Paragraph::new(display)
+        Paragraph::new("Press 'q' to quit.")
             .centered()
             .block(block)
-            .render(layout[1], buf);
-
-        Paragraph::new("render cpus e.g")
-            .centered()
-            .block(cpu_block)
             .render(layout[0], buf);
+
+        
     }
 }
