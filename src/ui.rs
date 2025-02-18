@@ -4,7 +4,7 @@ use ratatui::{
     style::{Style, Stylize},
     symbols::border,
     text::{Line, Text},
-    widgets::{Block, Paragraph, Widget},
+    widgets::{Block, Paragraph, StatefulWidget, Widget},
     DefaultTerminal, Frame,
 };
 use thiserror::Error;
@@ -27,15 +27,15 @@ impl AppState {
     pub fn run(&mut self, mut terminal: DefaultTerminal) -> Result<(), UiErrors> {
         while !self.exit {
             terminal
-                .draw(|frame| self.draw(frame))
+                .draw(|frame| self.draw(frame, AppState::default()))
                 .map_err(|_| UiErrors::GenericError("error drawing to frame".to_owned()))?;
             self.handle_events()?;
         }
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
-        frame.render_widget(self, frame.area());
+    fn draw(&self, frame: &mut Frame, mut state: AppState) {
+        frame.render_stateful_widget(self, frame.area(), &mut state);
     }
 
     fn handle_events(&mut self) -> Result<(), UiErrors> {
@@ -67,11 +67,14 @@ impl AppState {
     }
 }
 
-impl Widget for &AppState {
-    fn render(self, area: ratatui::prelude::Rect, buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized,
-    {
+impl StatefulWidget for &AppState {
+    type State = AppState;
+    fn render(
+        self,
+        area: ratatui::prelude::Rect,
+        buf: &mut ratatui::prelude::Buffer,
+        state: &mut Self::State,
+    ) {
         let title = Line::from("Rtop".bold().black());
         let block = Block::bordered()
             .border_set(border::PLAIN)
