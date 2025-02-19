@@ -1,19 +1,27 @@
 use crate::system::get_ram_info;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{BarChart, Block, Borders, Paragraph, Widget},
+    widgets::{BarChart, Block, Borders, Paragraph, StatefulWidget, Widget},
     DefaultTerminal, Frame,
 };
-use std::{thread, time::Duration};
 use thiserror::Error;
+use std::thread; 
+use std::time::Duration; 
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AppState {
     exit: bool,
     value: char,
+    ram_usage: RamUsage,
+}
+
+#[derive(Default, Clone)]
+pub struct RamUsage {
+    total_memory: u64,
+    used_memory: u64,
 }
 
 #[derive(Error, Debug)]
@@ -40,33 +48,98 @@ fn format_bytes(bytes: u64) -> String {
 }
 
 impl AppState {
+    // runs the application until the user quits
     pub fn run(&mut self, mut terminal: DefaultTerminal) -> Result<(), UiErrors> {
+        // Load initial RAM info.
+        self.update_ram_usage();
+
         while !self.exit {
             terminal
-                .draw(|frame| self.draw(frame))
+                .draw(|frame| {
+                    let mut state = self.clone(); 
+                    self.draw(frame, &mut state);
+                })
                 .map_err(|_| UiErrors::GenericError("error drawing to frame".to_owned()))?;
+
             self.handle_events()?;
-            thread::sleep(Duration::from_secs(1));
+            self.update_ram_usage();
+
+            thread::sleep(Duration::from_millis(16)); 
         }
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame) {
-        let area = frame.area();
+    fn draw(&self, frame: &mut Frame, state: &mut AppState) {
+        frame.render_stateful_widget(self, frame.area(), state);
+    }
+
+    fn handle_events(&mut self) -> Result<(), UiErrors> {
+        match event::read() {
+            Ok(Event::Key(key_event)) if key_event.kind == KeyEventKind::Press => {
+                self.handle_key_events(key_event);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn handle_key_events(&mut self, key_event: KeyEvent) {
+        match key_event.code {
+            KeyCode::Char('q') => self.exit(),
+            KeyCode::Char(char) => self.handle_char(char),
+            _ => {}
+        }
+    }
+
+    fn exit(&mut self) {
+        self.exit = true;
+    }
+
+    fn handle_char(&mut self, value: char) {
+        self.value = value
+    }
+
+    fn update_ram_usage(&mut self) {
         let (total_memory, used_memory) = get_ram_info();
-        let free_memory = total_memory - used_memory;
+        self.ram_usage = RamUsage {
+            total_memory,
+            used_memory,
+        };
+    }
+}
 
-        let formatted_total = format_bytes(total_memory);
-        let formatted_used = format_bytes(used_memory);
-        let formatted_free = format_bytes(free_memory);
+impl StatefulWidget for &AppState {
+    type State = AppState;
 
-        // Calculate percentage for the bar chart
-        let memory_percentage = (used_memory as f64 / total_memory as f64 * 100.0) as u64;
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
+        let main_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(40),
+                Constraint::Percentage(30),
+            ])
+            .split(area);
 
-        // Data for the bar chart
-        let data = vec![("Used", used_memory), ("Free", free_memory)];
+        
+        let key_press_block = Block::default()
+            .title("Key Press")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green));
 
-        // Bar chart widget
+        let key_press_display = Paragraph::new(Text::from(vec![Line::from(vec![
+            Span::raw("Pressed: "),
+            Span::styled(self.value.to_string(), Style::default().fg(Color::Yellow)),
+        ])]))
+        .block(key_press_block)
+        .alignment(ratatui::layout::Alignment::Center);
+
+        key_press_display.render(main_layout[0], buf);
+
+        // RAM Usage Bar Chart
+        let free_memory = state.ram_usage.total_memory - state.ram_usage.used_memory;
+        let data = vec![("Used", state.ram_usage.used_memory), ("Free", free_memory)];
+
         let bar_chart = BarChart::default()
             .block(
                 Block::default()
@@ -87,8 +160,16 @@ impl AppState {
                     .bg(Color::Green)
                     .add_modifier(Modifier::ITALIC),
             );
+        bar_chart.render(main_layout[1], buf);
 
-        // Text for detailed memory statistics
+        // RAM Statistics Paragraph
+        let formatted_total = format_bytes(state.ram_usage.total_memory);
+        let formatted_used = format_bytes(state.ram_usage.used_memory);
+        let formatted_free = format_bytes(free_memory);
+        let memory_percentage = (state.ram_usage.used_memory as f64
+            / state.ram_usage.total_memory as f64
+            * 100.0) as u64;
+
         let ram_stats_text = Text::from(vec![
             Line::from(vec![
                 Span::raw("Total Memory: "),
@@ -117,71 +198,6 @@ impl AppState {
             )
             .alignment(ratatui::layout::Alignment::Left);
 
-        // Key press block
-        let key_press_block = Block::default()
-            .title("Key Press")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green));
-
-        // Key press display
-        let key_press_display = Paragraph::new(Text::from(vec![Line::from(vec![
-            Span::raw("Pressed: "),
-            Span::styled(self.value.to_string(), Style::default().fg(Color::Yellow)),
-        ])]))
-        .block(key_press_block)
-        .alignment(ratatui::layout::Alignment::Center);
-
-        // Main layout dividing the screen
-        let main_layout = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Percentage(30),
-                Constraint::Percentage(40),
-                Constraint::Percentage(30),
-            ])
-            .split(area);
-
-        // Render key press display
-        frame.render_widget(key_press_display, main_layout[0]);
-
-        // Render RAM bar chart
-        frame.render_widget(bar_chart, main_layout[1]);
-
-        // Render RAM statistics
-        frame.render_widget(ram_stats_paragraph, main_layout[2]);
-    }
-
-    fn handle_events(&mut self) -> Result<(), UiErrors> {
-        match event::read() {
-            Ok(Event::Key(key_event)) if key_event.kind == KeyEventKind::Press => {
-                self.handle_key_events(key_event);
-                Ok(())
-            }
-            _ => Ok(()),
-        }
-    }
-
-    fn handle_key_events(&mut self, key_event: KeyEvent) {
-        match key_event.code {
-            KeyCode::Char('q') => self.exit(),
-            KeyCode::Char(char) => self.handle_char(char),
-            _ => {}
-        }
-    }
-
-    fn exit(&mut self) {
-        self.exit = true;
-    }
-
-    fn handle_char(&mut self, value: char) {
-        self.value = value;
-    }
-}
-
-impl Widget for &AppState {
-    fn render(self, _area: ratatui::prelude::Rect, _buf: &mut ratatui::prelude::Buffer)
-    where
-        Self: Sized,
-    {
+        ram_stats_paragraph.render(main_layout[2], buf);
     }
 }
