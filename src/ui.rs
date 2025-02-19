@@ -7,7 +7,6 @@ use ratatui::{
     widgets::{BarChart, Block, Borders, Paragraph, StatefulWidget, Widget},
     DefaultTerminal, Frame,
 };
-use std::thread;
 use std::time::{Duration, Instant};
 use thiserror::Error;
 
@@ -77,8 +76,6 @@ impl AppState {
             self.handle_events()?;
             self.update_ram_usage();
             self.update_value();
-
-            thread::sleep(Duration::from_millis(16));
         }
         Ok(())
     }
