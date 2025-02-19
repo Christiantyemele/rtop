@@ -11,12 +11,23 @@ use thiserror::Error;
 use std::thread;
 use std::time::{Duration, Instant};
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct AppState {
     exit: bool,
     value: char,
     ram_usage: RamUsage,
     last_update: Instant,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        AppState {
+            exit: false,
+            value: ' ',
+            ram_usage: RamUsage::default(),
+            last_update: Instant::now(),
+        }
+    }
 }
 
 #[derive(Default, Clone)]
