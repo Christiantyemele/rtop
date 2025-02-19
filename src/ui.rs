@@ -1,19 +1,38 @@
+use crate::system::get_ram_info;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind};
 use ratatui::{
-    layout::{Constraint, Layout},
-    style::{Style, Stylize},
-    symbols::border,
-    text::{Line, Text},
-    widgets::{Block, Paragraph, StatefulWidget, Widget},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Color, Modifier, Style, Stylize},
+    text::{Line, Span, Text},
+    widgets::{BarChart, Block, Borders, Paragraph, StatefulWidget, Widget},
     DefaultTerminal, Frame,
 };
+use std::time::{Duration, Instant};
 use thiserror::Error;
 
-#[derive(Default)]
+#[derive(Clone)]
 pub struct AppState {
     exit: bool,
-    // dummy
     value: char,
+    ram_usage: RamUsage,
+    last_update: Instant,
+}
+
+impl AppState {
+    pub fn new() -> Self {
+        AppState {
+            exit: false,
+            value: ' ',
+            ram_usage: RamUsage::default(),
+            last_update: Instant::now(),
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct RamUsage {
+    total_memory: u64,
+    used_memory: u64,
 }
 
 #[derive(Error, Debug)]
@@ -22,30 +41,55 @@ pub enum UiErrors {
     GenericError(String),
 }
 
+// Function to format bytes into human-readable format
+fn format_bytes(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} bytes", bytes)
+    }
+}
+
 impl AppState {
-    // runs the application untill the user quits
+    // runs the application until the user quits
     pub fn run(&mut self, mut terminal: DefaultTerminal) -> Result<(), UiErrors> {
+        // Load initial RAM info.
+        self.update_ram_usage();
+        self.last_update = Instant::now();
+
         while !self.exit {
             terminal
-                .draw(|frame| self.draw(frame, AppState::default()))
+                .draw(|frame| {
+                    let mut state = self.clone();
+                    self.draw(frame, &mut state);
+                })
                 .map_err(|_| UiErrors::GenericError("error drawing to frame".to_owned()))?;
+
             self.handle_events()?;
+            self.update_ram_usage();
+            self.update_value();
         }
         Ok(())
     }
 
-    fn draw(&self, frame: &mut Frame, mut state: AppState) {
-        frame.render_stateful_widget(self, frame.area(), &mut state);
+    fn draw(&self, frame: &mut Frame, state: &mut AppState) {
+        frame.render_stateful_widget(self, frame.area(), state);
     }
 
     fn handle_events(&mut self) -> Result<(), UiErrors> {
-        // use blocking event for now
         match event::read() {
             Ok(Event::Key(key_event)) if key_event.kind == KeyEventKind::Press => {
                 self.handle_key_events(key_event);
                 Ok(())
             }
-            // ignore mouse events for now
             _ => Ok(()),
         }
     }
@@ -63,47 +107,120 @@ impl AppState {
     }
 
     fn handle_char(&mut self, value: char) {
-        self.value = value
+        self.value = value;
+    }
+
+    fn update_ram_usage(&mut self) {
+        let (total_memory, used_memory) = get_ram_info();
+        self.ram_usage = RamUsage {
+            total_memory,
+            used_memory,
+        };
+    }
+
+    fn update_value(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_update);
+
+        if elapsed >= Duration::from_secs(2) {
+            let chars = ['A', 'B', 'C', 'D'];
+            let index = (now.elapsed().as_secs() % chars.len() as u64) as usize;
+            self.value = chars[index];
+            self.last_update = now;
+        }
     }
 }
 
 impl StatefulWidget for &AppState {
     type State = AppState;
-    fn render(
-        self,
-        area: ratatui::prelude::Rect,
-        buf: &mut ratatui::prelude::Buffer,
-        state: &mut Self::State,
-    ) {
-        let title = Line::from("Rtop".bold().black());
-        let block = Block::bordered()
-            .border_set(border::PLAIN)
-            .border_style(Style::new().green())
-            .title(title.centered());
 
-        let cpu_block = Block::bordered()
-            .border_set(border::PLAIN)
-            .border_style(Style::new().green());
-
-        // application layout
-        let layout = Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([Constraint::Percentage(30), Constraint::Percentage(70)])
+    fn render(self, area: Rect, buf: &mut ratatui::prelude::Buffer, state: &mut Self::State) {
+        let main_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Percentage(30),
+                Constraint::Percentage(40),
+                Constraint::Percentage(30),
+            ])
             .split(area);
 
-        let display = Text::from(vec![Line::from(vec![
-            "pressed ".into(),
-            self.value.to_string().yellow(),
-        ])]);
+        // Key press display
+        let key_press_block = Block::default()
+            .title("Key Press")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green));
 
-        Paragraph::new(display)
-            .centered()
-            .block(block)
-            .render(layout[1], buf);
+        let key_press_display = Paragraph::new(Text::from(vec![Line::from(vec![
+            Span::raw("Pressed: "),
+            Span::styled(self.value.to_string(), Style::default().fg(Color::Yellow)),
+        ])]))
+        .block(key_press_block)
+        .alignment(ratatui::layout::Alignment::Center);
 
-        Paragraph::new("render cpus e.g")
-            .centered()
-            .block(cpu_block)
-            .render(layout[0], buf);
+        key_press_display.render(main_layout[0], buf);
+
+        // RAM Usage Bar Chart
+        let free_memory = state.ram_usage.total_memory - state.ram_usage.used_memory;
+        let data = vec![("Used", state.ram_usage.used_memory), ("Free", free_memory)];
+
+        let bar_chart = BarChart::default()
+            .block(
+                Block::default()
+                    .title("RAM Usage")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .data(
+                &data
+                    .iter()
+                    .map(|(label, value)| (&**label, *value))
+                    .collect::<Vec<(&str, u64)>>(),
+            )
+            .bar_width(3)
+            .bar_style(Style::default().fg(Color::Green))
+            .value_style(
+                Style::default()
+                    .bg(Color::Green)
+                    .add_modifier(Modifier::ITALIC),
+            );
+        bar_chart.render(main_layout[1], buf);
+
+        // RAM Statistics Paragraph
+        let formatted_total = format_bytes(state.ram_usage.total_memory);
+        let formatted_used = format_bytes(state.ram_usage.used_memory);
+        let formatted_free = format_bytes(free_memory);
+        let memory_percentage = (state.ram_usage.used_memory as f64
+            / state.ram_usage.total_memory as f64
+            * 100.0) as u64;
+
+        let ram_stats_text = Text::from(vec![
+            Line::from(vec![
+                Span::raw("Total Memory: "),
+                Span::styled(formatted_total, Style::default().fg(Color::Cyan)),
+            ]),
+            Line::from(vec![
+                Span::raw("Used Memory: "),
+                Span::styled(formatted_used, Style::default().fg(Color::Red)),
+            ]),
+            Line::from(vec![
+                Span::raw("Free Memory: "),
+                Span::styled(formatted_free, Style::default().fg(Color::Green)),
+            ]),
+            Line::from(vec![
+                Span::raw(format!("Usage: {}%", memory_percentage)).fg(Color::White)
+            ]),
+            Line::from(vec![Span::raw("Press 'q' to quit.").fg(Color::Red)]),
+        ]);
+
+        let ram_stats_paragraph = Paragraph::new(ram_stats_text)
+            .block(
+                Block::default()
+                    .title("Statistics")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow)),
+            )
+            .alignment(ratatui::layout::Alignment::Left);
+
+        ram_stats_paragraph.render(main_layout[2], buf);
     }
 }
