@@ -8,14 +8,15 @@ use ratatui::{
     DefaultTerminal, Frame,
 };
 use thiserror::Error;
-use std::thread; 
-use std::time::Duration; 
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Default, Clone)]
 pub struct AppState {
     exit: bool,
     value: char,
     ram_usage: RamUsage,
+    last_update: Instant,
 }
 
 #[derive(Default, Clone)]
@@ -52,19 +53,21 @@ impl AppState {
     pub fn run(&mut self, mut terminal: DefaultTerminal) -> Result<(), UiErrors> {
         // Load initial RAM info.
         self.update_ram_usage();
+        self.last_update = Instant::now();
 
         while !self.exit {
             terminal
                 .draw(|frame| {
-                    let mut state = self.clone(); 
+                    let mut state = self.clone();
                     self.draw(frame, &mut state);
                 })
                 .map_err(|_| UiErrors::GenericError("error drawing to frame".to_owned()))?;
 
             self.handle_events()?;
             self.update_ram_usage();
+            self.update_value();
 
-            thread::sleep(Duration::from_millis(16)); 
+            thread::sleep(Duration::from_millis(16));
         }
         Ok(())
     }
@@ -96,7 +99,7 @@ impl AppState {
     }
 
     fn handle_char(&mut self, value: char) {
-        self.value = value
+        self.value = value;
     }
 
     fn update_ram_usage(&mut self) {
@@ -105,6 +108,18 @@ impl AppState {
             total_memory,
             used_memory,
         };
+    }
+
+    fn update_value(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_update);
+
+        if elapsed >= Duration::from_secs(2) {
+            let chars = ['A', 'B', 'C', 'D'];
+            let index = (now.elapsed().as_secs() % chars.len() as u64) as usize;
+            self.value = chars[index];
+            self.last_update = now;
+        }
     }
 }
 
@@ -121,7 +136,7 @@ impl StatefulWidget for &AppState {
             ])
             .split(area);
 
-        
+        // Key press display
         let key_press_block = Block::default()
             .title("Key Press")
             .borders(Borders::ALL)
