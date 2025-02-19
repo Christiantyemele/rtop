@@ -7,9 +7,9 @@ use ratatui::{
     widgets::{BarChart, Block, Borders, Paragraph, StatefulWidget, Widget},
     DefaultTerminal, Frame,
 };
-use thiserror::Error;
 use std::thread;
 use std::time::{Duration, Instant};
+use thiserror::Error;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -19,8 +19,8 @@ pub struct AppState {
     last_update: Instant,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+impl AppState {
+    pub fn new() -> Self {
         AppState {
             exit: false,
             value: ' ',
