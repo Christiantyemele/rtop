@@ -1,4 +1,4 @@
-use crate::application::{App, AppResult};
+use crate::app::{App, AppResult};
 use crate::event::EventHandler;
 use crate::ui;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};

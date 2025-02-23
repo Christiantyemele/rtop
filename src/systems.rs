@@ -1,12 +1,4 @@
-use std::{
-    io,
-    sync::{
-        mpsc::{Sender, SyncSender},
-        Arc, RwLock,
-    },
-};
-
-use sysinfo::{self};
+use std::sync::{Arc, RwLock};
 
 use crate::{config::CPU_UPDATE_INTERVAL, utils::SystemState};
 
@@ -18,7 +10,6 @@ pub struct CpuState {
     pub frequency: u64,
     pub temperature: f32,
     pub num_cpus: usize,
-    pub run: bool
 }
 
 impl CpuState {
@@ -26,7 +17,7 @@ impl CpuState {
         &mut self,
         system_state: Arc<RwLock<SystemState>>,
         tx: std::sync::mpsc::Sender<CpuState>,
-    ) -> io::Result<()> {
+    ) -> Result<(), String> {
         let mut guard = system_state.write().unwrap();
         let num_cpus = num_cpus::get();
         loop {
@@ -38,11 +29,10 @@ impl CpuState {
                     frequency: cpu.frequency(),
                     name: cpu.name().to_owned(),
                     temperature: f32::default(),
-                    num_cpus: num_cpus, // should be constructed just once
-                    run: true
+                    num_cpus: num_cpus,
                 };
 
-                tx.send(new).unwrap();
+                tx.send(new).map_err(|e| format!("error: {}", e.to_string()))?;
             }
 
             std::thread::sleep(CPU_UPDATE_INTERVAL);

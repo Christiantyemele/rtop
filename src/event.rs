@@ -1,10 +1,10 @@
-use std::{clone, default, sync::{mpsc::Sender, Arc}, time::Duration};
+use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyEvent, MouseEvent};
 use futures::{FutureExt, StreamExt};
-use tokio::sync::{broadcast, mpsc::{self, Receiver}, watch::{self, }};
+use tokio::sync::mpsc::{self};
 
-use crate::{application::AppResult};
+use crate::app::AppResult;
 
 /// Terminal events.
 #[derive(Clone, Copy, Debug)]
@@ -17,13 +17,7 @@ pub enum Event {
     Mouse(MouseEvent),
     /// Terminal resize.
     Resize(u16, u16),
-
-  
 }
-// #[derive(Default, Clone)]
-// pub struct AppState {
-//   cpu_state: CpuState
-// }
 
 /// Terminal event handler.
 #[allow(dead_code)]
@@ -33,20 +27,16 @@ pub struct EventHandler {
     sender: mpsc::UnboundedSender<Event>,
     /// Event receiver channel.
     receiver: mpsc::UnboundedReceiver<Event>,
-    // /// Appstate receiver
-    // appstate_receiver:  mpsc::UnboundedReceiver<AppState>,
     /// Event handler thread.
     handler: tokio::task::JoinHandle<()>,
 }
 
 impl EventHandler {
     /// Constructs a new instance of [`EventHandler`].
-  
+
     pub fn new(tick_rate: u64) -> Self {
         let tick_rate = Duration::from_millis(tick_rate);
         let (sender, receiver) = mpsc::unbounded_channel();
-        // let (appstate_sender, appstate_receiver) = mpsc::unbounded_channel();
-        // let _appsatate_sender = appstate_sender.clone();
         let _sender = sender.clone();
         let handler = tokio::spawn(async move {
             let mut reader = crossterm::event::EventStream::new();
@@ -54,37 +44,28 @@ impl EventHandler {
             loop {
                 let tick_delay = tick.tick();
                 let crossterm_event = reader.next().fuse();
-                // needs refactoring
-                // let recv = rx.recv();
-                // let mut _recv = tx.subscribe();
-
                 tokio::select! {
-                  // val = app.cpu_state.send("value") => {
-              
-                  // }
 
-                  _ = _sender.closed() => { // close sender to avoid hanging 
+                  _ = _sender.closed() => {
                     break;
                   }
-                  // _ = recv => {
-            
-                  //   appstate_sender.send(_recv.recv().await.unwrap_or(AppState::default())).unwrap()
-                  // }
+
                   _ = tick_delay => {
-                    _sender.send(Event::Tick).unwrap(); // send tick event for update
+                    _sender.send(Event::Tick).ok();
                   }
-                  Some(Ok(evt)) = crossterm_event => { // send events receive
+
+                  Some(Ok(evt)) = crossterm_event => {
                     match evt {
                       CrosstermEvent::Key(key) => {
                         if key.kind == crossterm::event::KeyEventKind::Press {
-                          _sender.send(Event::Key(key)).unwrap();
+                          _sender.send(Event::Key(key)).ok();
                         }
                       },
                       CrosstermEvent::Mouse(mouse) => {
-                        _sender.send(Event::Mouse(mouse)).unwrap();
+                        _sender.send(Event::Mouse(mouse)).ok();
                       },
                       CrosstermEvent::Resize(x, y) => {
-                        _sender.send(Event::Resize(x, y)).unwrap();
+                        _sender.send(Event::Resize(x, y)).ok();
                       },
                       CrosstermEvent::FocusLost => {
                       },
@@ -101,7 +82,6 @@ impl EventHandler {
             sender,
             receiver,
             handler,
-            // appstate_receiver,
         }
     }
 
