@@ -18,13 +18,14 @@ pub struct CpuState {
     pub frequency: u64,
     pub temperature: f32,
     pub num_cpus: usize,
+    pub run: bool
 }
 
 impl CpuState {
     pub fn cpu_info(
         &mut self,
         system_state: Arc<RwLock<SystemState>>,
-        tx: SyncSender<CpuState>,
+        tx: std::sync::mpsc::Sender<CpuState>,
     ) -> io::Result<()> {
         let mut guard = system_state.write().unwrap();
         let num_cpus = num_cpus::get();
@@ -38,6 +39,7 @@ impl CpuState {
                     name: cpu.name().to_owned(),
                     temperature: f32::default(),
                     num_cpus: num_cpus, // should be constructed just once
+                    run: true
                 };
 
                 tx.send(new).unwrap();
