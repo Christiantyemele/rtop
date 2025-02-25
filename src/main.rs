@@ -35,7 +35,7 @@ async fn main() -> AppResult<()> {
     tui.init()?;
 
     // Start the main loop.
-    while !app.running {
+    while !app.exit {
         // Render the user interface.
         tui.draw(&mut app)?;
 
