@@ -1,4 +1,4 @@
-use std::error;
+use std::{collections::HashMap, error};
 
 use crate::systems::CpuState;
 
@@ -13,7 +13,7 @@ pub struct App {
     pub exit: bool,
 
     /// cpu
-    pub cpu: CpuState,
+    pub cpu: HashMap<String, CpuState>,
 }
 
 impl App {
@@ -31,7 +31,7 @@ impl App {
     }
 
     /// update cpu info
-    pub fn cpu_handle(&mut self, cpu: CpuState) {
+    pub fn cpu_handle(&mut self, cpu: HashMap<String, CpuState>) {
         self.cpu = cpu
     }
 }

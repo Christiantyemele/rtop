@@ -1,6 +1,5 @@
 use std::{
-    io,
-    sync::{Arc, RwLock},
+    collections::HashMap, io, sync::{Arc, RwLock}
 };
 
 use ratatui::{prelude::CrosstermBackend, Terminal};
@@ -36,6 +35,7 @@ async fn main() -> AppResult<()> {
 
     // Start the main loop.
     while !app.exit {
+        
         // Render the user interface.
         tui.draw(&mut app)?;
 
@@ -58,7 +58,7 @@ async fn main() -> AppResult<()> {
     Ok(())
 }
 
-fn cpu_worker_task(systemstate: Arc<Global>, tx: std::sync::mpsc::Sender<CpuState>) -> Result<(), String> {
+fn cpu_worker_task(systemstate: Arc<Global>, tx: std::sync::mpsc::Sender<HashMap<String, CpuState>>) -> Result<(), String> {
     let mut cpu_state = systemstate.cpu_state.clone();
     let system_state = systemstate.system.clone();
 

@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::{Arc, RwLock}};
 
 use crate::{config::CPU_UPDATE_INTERVAL, utils::SystemState};
 
@@ -16,8 +16,9 @@ impl CpuState {
     pub fn cpu_info(
         &mut self,
         system_state: Arc<RwLock<SystemState>>,
-        tx: std::sync::mpsc::Sender<CpuState>,
+        tx: std::sync::mpsc::Sender<HashMap<String, CpuState>>,
     ) -> Result<(), String> {
+        let state = RefCell::new(HashMap::new());
         let mut guard = system_state.write().unwrap();
         let num_cpus = num_cpus::get();
         loop {
@@ -31,8 +32,10 @@ impl CpuState {
                     temperature: f32::default(),
                     num_cpus: num_cpus,
                 };
-
-                tx.send(new).map_err(|e| format!("error: {}", e.to_string()))?;
+                
+                // update the state
+                state.borrow_mut().insert(cpu.name().to_string(), new);
+                tx.send(state.borrow().clone()).map_err(|e| format!("error: {}", e.to_string()))?;
             }
 
             std::thread::sleep(CPU_UPDATE_INTERVAL);
